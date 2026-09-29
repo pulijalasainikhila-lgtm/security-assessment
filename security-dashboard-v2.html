@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>World Monitor — Security Assessment</title>
+<style>
+:root{
+  --bg:#0a0c10; --panel:#11141a; --panel2:#151922; --border:#232a35;
+  --border-soft:#1c222c; --text:#e8ebf0; --muted:#9aa4b2; --faint:#6b7484;
+  --pass:#34c46a; --pass-dim:rgba(52,196,106,.12); --pass-border:rgba(52,196,106,.35);
+  --fail:#ef5350; --warn:#d9a129; --info:#4f9cf9;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
+
+/* ---------- ambient background (static radar motif, pure SVG/CSS — no image files) ---------- */
+.bg-scene{position:fixed;inset:0;z-index:-1;overflow:hidden;pointer-events:none}
+.bg-grid{position:absolute;inset:-40px;
+  background-image:radial-gradient(circle,rgba(232,235,240,.10) 1px,transparent 1.4px);
+  background-size:26px 26px;
+  -webkit-mask-image:radial-gradient(ellipse 95% 80% at 50% 20%,#000 40%,transparent 85%);
+          mask-image:radial-gradient(ellipse 95% 80% at 50% 20%,#000 40%,transparent 85%)}
+.bg-rings{position:absolute;top:-170px;right:-150px;width:640px;height:640px}
+.bg-rings2{position:absolute;bottom:-230px;left:-210px;width:560px;height:560px;opacity:.8}
+.bg-vignette{position:absolute;inset:0;
+  background:radial-gradient(ellipse 125% 95% at 50% 20%,transparent 62%,rgba(5,7,11,.38) 100%)}
+
+/* ---------- layout ---------- */
+.shell{max-width:1060px;margin:0 auto;padding:40px 28px 64px}
+@media (max-width:640px){.shell{padding:24px 16px 48px}}
+
+/* ---------- header ---------- */
+header{margin-bottom:28px}
+.brand{display:flex;align-items:center;gap:10px;margin-bottom:18px}
+.brand-mark{width:22px;height:22px;border-radius:6px;background:var(--pass);display:flex;align-items:center;justify-content:center}
+.brand-mark svg{width:13px;height:13px}
+.brand-name{font-size:13px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--text)}
+h1{font-size:26px;font-weight:650;margin:0 0 6px;letter-spacing:-.01em}
+.subtitle{color:var(--muted);font-size:14px;margin:0}
+
+/* ---------- tabs ---------- */
+nav{display:flex;gap:2px;border-bottom:1px solid var(--border);margin-bottom:32px;overflow-x:auto}
+nav button{appearance:none;background:none;border:none;color:var(--muted);font:inherit;font-size:13.5px;font-weight:500;
+  padding:12px 16px;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap;transition:color .15s,border-color .15s}
+nav button:hover{color:var(--text)}
+nav button.active{color:var(--text);border-bottom-color:var(--pass)}
+nav button:focus-visible{outline:2px solid var(--info);outline-offset:-2px;border-radius:4px}
+nav button .tab-count{display:inline-block;margin-left:7px;padding:1px 7px;border-radius:9px;font-size:10.5px;font-weight:600;
+  background:var(--panel2);border:1px solid var(--border);color:var(--muted)}
+nav button.active .tab-count{background:var(--pass-dim);border-color:var(--pass-border);color:var(--pass)}
+
+/* ---------- overview ---------- */
+.hero{display:grid;grid-template-columns:280px 1fr;gap:16px;margin-bottom:16px}
+@media (max-width:760px){.hero{grid-template-columns:1fr}}
+.summary-card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:28px;display:flex;flex-direction:column;justify-content:center}
+.summary-card .label{font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin-bottom:14px}
+.summary-card .num{font-size:52px;font-weight:700;line-height:1;color:var(--pass);letter-spacing:-.02em}
+.summary-card .num-cap{font-size:13px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--pass);margin-top:8px}
+.summary-card .meta{margin-top:18px;padding-top:16px;border-top:1px solid var(--border-soft);display:flex;gap:18px;font-size:12.5px;color:var(--muted)}
+.summary-card .meta b{color:var(--text);font-weight:600}
+.mini-bars{display:flex;align-items:flex-end;gap:6px;height:56px;margin-top:auto;padding-top:18px}
+.mini-bars .bar{width:100%;max-width:26px;border-radius:4px 4px 0 0;background:var(--pass-dim);border:1px solid var(--pass-border);position:relative}
+.mini-bars .bar.filled{background:var(--pass)}
+.tot-card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:22px 24px;display:flex;flex-direction:column}
+.tot-card h3{font-size:13px;font-weight:600;margin:0 0 14px;color:var(--muted);letter-spacing:.02em}
+.target-line{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:12.5px;color:var(--muted);margin-bottom:18px}
+.target-line .dot{width:7px;height:7px;border-radius:50%;background:var(--pass);flex:none}
+.target-line b{color:var(--text);font-weight:600}
+.cat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:auto}
+@media (max-width:760px){.cat-grid{grid-template-columns:repeat(2,1fr)}}
+.cat-tile{background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:14px 16px;cursor:pointer;
+  transition:border-color .15s,background .15s;text-align:left;font:inherit;color:inherit}
+.cat-tile:hover{border-color:var(--pass-border);background:#1a2029}
+.cat-tile .t-name{font-size:13px;font-weight:600;margin-bottom:6px}
+.cat-tile .t-count{font-size:11.5px;color:var(--pass);font-weight:600;letter-spacing:.04em}
+.run-row{display:flex;align-items:center;gap:14px;margin-top:20px;flex-wrap:wrap}
+.btn{appearance:none;border:none;border-radius:8px;font:inherit;font-size:13.5px;font-weight:600;padding:10px 20px;cursor:pointer;
+  display:inline-flex;align-items:center;gap:8px;transition:background .15s,opacity .15s}
+.btn.primary{background:var(--pass);color:#06130a}
+.btn.primary:hover{background:#3dd378}
+.btn.primary:disabled{opacity:.55;cursor:default}
+.btn.ghost{background:transparent;border:1px solid var(--border);color:var(--text)}
+.btn.ghost:hover{border-color:var(--faint)}
+.run-status{font-size:12.5px;color:var(--muted)}
+.run-status.err{color:var(--fail)}
+.progress{height:3px;border-radius:2px;background:var(--panel2);overflow:hidden;flex:1;min-width:120px;opacity:0;transition:opacity .2s}
+.progress.on{opacity:1}
+.progress i{display:block;height:100%;width:0;background:var(--pass);border-radius:2px;transition:width .3s ease}
+
+/* ---------- category pages ---------- */
+.cat-head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin-bottom:18px}
+.cat-head h2{font-size:19px;font-weight:650;margin:0;letter-spacing:-.01em}
+.cat-head p{margin:0;color:var(--muted);font-size:13px}
+.cat-head .cat-badge{flex:none;display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;letter-spacing:.06em;
+  color:var(--pass);background:var(--pass-dim);border:1px solid var(--pass-border);border-radius:20px;padding:4px 12px}
+.cat-badge .tick{font-size:12px}
+
+/* ---------- test cards ---------- */
+.cards{display:grid;grid-template-columns:1fr;gap:12px;max-width:780px}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:20px 22px;transition:border-color .2s}
+.card.running{border-color:var(--info)}
+.card.done-pass{border-color:var(--pass-border)}
+.card.warn-state{border-color:rgba(217,161,41,.4)}
+.card.fail-state{border-color:rgba(239,83,80,.45)}
+.card-top{display:flex;align-items:center;gap:12px}
+.state-ico{width:26px;height:26px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;
+  font-size:13px;font-weight:700}
+.state-ico.idle{background:var(--panel2);border:1px solid var(--border);color:var(--faint)}
+.state-ico.running{background:transparent;color:var(--info)}
+.state-ico.pass{background:var(--pass-dim);color:var(--pass)}
+.state-ico.warn{background:rgba(217,161,41,.12);color:var(--warn)}
+.state-ico.fail,.state-ico.error{background:rgba(239,83,80,.12);color:var(--fail)}
+.card-top .name{font-size:15px;font-weight:600;flex:1}
+.badge{flex:none;font-size:11px;font-weight:700;letter-spacing:.08em;padding:4px 11px;border-radius:14px}
+.badge.idle{background:var(--panel2);border:1px solid var(--border);color:var(--faint)}
+.badge.running{background:rgba(79,156,249,.12);color:var(--info)}
+.badge.pass{background:var(--pass-dim);color:var(--pass)}
+.badge.warn{background:rgba(217,161,41,.12);color:var(--warn)}
+.badge.fail,.badge.error{background:rgba(239,83,80,.12);color:var(--fail)}
+.card-desc{color:var(--muted);font-size:13px;margin:10px 0 0 38px;max-width:600px}
+.card-body{margin-left:38px}
+.evidence{margin-top:14px}
+.evidence .ev-label{font-size:10.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin-bottom:6px}
+.ev-line{display:inline-flex;align-items:baseline;gap:8px;font-family:var(--mono);font-size:12.5px;color:var(--text);
+  background:var(--panel2);border:1px solid var(--border);border-radius:6px;padding:6px 10px;margin:0 6px 6px 0}
+.ev-line .ev-sep{color:var(--faint)}
+.card-foot{display:flex;justify-content:space-between;align-items:center;margin-top:16px;gap:12px}
+.run-one{appearance:none;background:none;border:1px solid var(--border);color:var(--muted);font:inherit;font-size:12px;
+  font-weight:500;padding:5px 12px;border-radius:6px;cursor:pointer;transition:color .15s,border-color .15s}
+.run-one:hover{color:var(--text);border-color:var(--faint)}
+.run-one:disabled{opacity:.5;cursor:default}
+.details-toggle{appearance:none;background:none;border:none;color:var(--info);font:inherit;font-size:12.5px;font-weight:500;
+  cursor:pointer;padding:4px 2px;display:inline-flex;align-items:center;gap:5px}
+.details-toggle:hover{text-decoration:underline}
+.details{display:none;margin-top:14px;background:var(--panel2);border:1px solid var(--border-soft);border-radius:8px;overflow:hidden}
+.details.open{display:block}
+.details table{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:11.5px}
+.details td{padding:7px 12px;border-bottom:1px solid var(--border-soft);vertical-align:top}
+.details tr:last-child td{border-bottom:none}
+.details td:first-child{color:var(--faint);width:150px;white-space:nowrap}
+.details td:last-child{color:var(--text);word-break:break-all}
+.details .d-sec{font-family:inherit;font-size:10.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--faint);padding:9px 12px 5px;display:block}
+.status-msg{margin-top:12px;font-size:12.5px}
+.status-msg.warn{color:var(--warn)}
+.status-msg.fail,.status-msg.error{color:var(--fail)}
+
+/* ---------- spinner ---------- */
+.spinner{width:13px;height:13px;border:2px solid rgba(79,156,249,.25);border-top-color:var(--info);border-radius:50%;
+  animation:spin .7s linear infinite;display:inline-block;flex:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ---------- footer ---------- */
+footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--border-soft);display:flex;justify-content:space-between;
+  gap:12px;flex-wrap:wrap;color:var(--faint);font-size:11.5px}
+footer b{color:var(--muted);font-weight:600}
+
+.view{animation:fadein .18s ease}
+@keyframes fadein{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.view{animation:none}.spinner{animation-duration:1.5s}}
+</style>
+</head>
+<body>
+
+<div class="bg-scene" aria-hidden="true">
+  <div class="bg-grid"></div>
+  <svg class="bg-rings" viewBox="0 0 600 600" fill="none">
+    <circle cx="300" cy="300" r="120" stroke="rgba(154,164,178,.22)" stroke-width="1"/>
+    <circle cx="300" cy="300" r="200" stroke="rgba(154,164,178,.15)" stroke-width="1" stroke-dasharray="3 7"/>
+    <circle cx="300" cy="300" r="286" stroke="rgba(154,164,178,.11)" stroke-width="1"/>
+    <line x1="300" y1="0" x2="300" y2="18" stroke="rgba(154,164,178,.30)"/>
+    <line x1="300" y1="582" x2="300" y2="600" stroke="rgba(154,164,178,.30)"/>
+    <line x1="0" y1="300" x2="18" y2="300" stroke="rgba(154,164,178,.30)"/>
+    <line x1="582" y1="300" x2="600" y2="300" stroke="rgba(154,164,178,.30)"/>
+    <circle cx="392" cy="210" r="3" fill="rgba(154,164,178,.55)"/>
+    <circle cx="210" cy="388" r="2.5" fill="rgba(154,164,178,.45)"/>
+    <circle cx="352" cy="352" r="2" fill="rgba(154,164,178,.36)"/>
+  </svg>
+  <svg class="bg-rings2" viewBox="0 0 600 600" fill="none">
+    <circle cx="300" cy="300" r="150" stroke="rgba(154,164,178,.16)" stroke-width="1" stroke-dasharray="2 9"/>
+    <circle cx="300" cy="300" r="240" stroke="rgba(154,164,178,.10)" stroke-width="1"/>
+  </svg>
+  <div class="bg-vignette"></div>
+</div>
+
+<div class="shell">
+
+  <header>
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#06130a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 6L9 17l-5-5"/>
+        </svg>
+      </div>
+      <span class="brand-name">World Monitor</span>
+    </div>
+    <h1>Security Assessment</h1>
+    <p class="subtitle">Automated security checks for your local web application.</p>
+  </header>
+
+  <nav role="tablist" aria-label="Assessment categories">
+    <button id="tab-overview" data-tab="overview" class="active">Overview</button>
+    <button id="tab-auth" data-tab="auth">Authentication <span class="tab-count" id="cnt-auth">1</span></button>
+    <button id="tab-input" data-tab="input">Input Security <span class="tab-count" id="cnt-input">3</span></button>
+    <button id="tab-api" data-tab="api">API Security <span class="tab-count" id="cnt-api">1</span></button>
+    <button id="tab-client" data-tab="client">Client Security <span class="tab-count" id="cnt-client">3</span></button>
+  </nav>
+
+  <!-- ================= OVERVIEW ================= -->
+  <section id="view-overview" class="view" role="tabpanel" aria-labelledby="tab-overview">
+    <div class="hero">
+      <div class="summary-card">
+        <div class="label">Security Checks</div>
+        <div class="num" id="sum-num">8</div>
+        <div class="num-cap">Passed</div>
+        <div class="meta">
+          <span><b id="m-pass">0</b> Passed</span>
+          <span><b id="m-fail">0</b> Failed</span>
+          <span><b id="m-warn">0</b> Warnings</span>
+        </div>
+        <div class="mini-bars" aria-hidden="true">
+          <div class="bar" id="bar-1"></div><div class="bar" id="bar-2"></div>
+          <div class="bar" id="bar-3"></div><div class="bar" id="bar-4"></div>
+          <div class="bar" id="bar-5"></div><div class="bar" id="bar-6"></div>
+          <div class="bar" id="bar-7"></div><div class="bar" id="bar-8"></div>
+        </div>
+      </div>
+
+      <div class="tot-card">
+        <h3>Assessment target</h3>
+        <div class="target-line"><span class="dot" id="target-dot"></span><span>Testing&nbsp;<b id="target-url">http://localhost:3000</b></span></div>
+        <div class="run-row" style="margin-top:0">
+          <button class="btn primary" id="run-all-btn" onclick="runAll()">
+            <span id="run-all-label">Run All Checks</span>
+          </button>
+          <button class="btn ghost" id="report-btn" onclick="downloadReport()">Download Report</button>
+          <div class="progress" id="progress"><i id="progress-fill"></i></div>
+          <span class="run-status" id="run-status">Not run yet</span>
+        </div>
+        <h3 style="margin:24px 0 12px">Categories</h3>
+        <div class="cat-grid" id="cat-grid"></div>
+      </div>
+    </div>
+
+    <footer>
+      <span><b>World Monitor</b> · Security Assessment prototype</span>
+      <span id="last-scan">Backend: security_scanner.py · port 8000</span>
+    </footer>
+  </section>
+
+  <!-- ================= CATEGORY PAGES ================= -->
+  <section id="view-auth" class="view" role="tabpanel" aria-labelledby="tab-auth" hidden>
+    <div class="cat-head">
+      <div>
+        <h2>Authentication</h2>
+        <p>Session handling and cookie protections.</p>
+      </div>
+      <span class="cat-badge"><span class="tick">✓</span> <span id="badge-auth">1 PASS</span></span>
+    </div>
+    <div class="cards" id="cards-auth"></div>
+  </section>
+
+  <section id="view-input" class="view" role="tabpanel" aria-labelledby="tab-input" hidden>
+    <div class="cat-head">
+      <div>
+        <h2>Input Security</h2>
+        <p>How the application handles malicious or malformed input.</p>
+      </div>
+      <span class="cat-badge"><span class="tick">✓</span> <span id="badge-input">3 PASS</span></span>
+    </div>
+    <div class="cards" id="cards-input"></div>
+  </section>
+
+  <section id="view-api" class="view" role="tabpanel" aria-labelledby="tab-api" hidden>
+    <div class="cat-head">
+      <div>
+        <h2>API Security</h2>
+        <p>Cross-origin and API surface protections.</p>
+      </div>
+      <span class="cat-badge"><span class="tick">✓</span> <span id="badge-api">1 PASS</span></span>
+    </div>
+    <div class="cards" id="cards-api"></div>
+  </section>
+
+  <section id="view-client" class="view" role="tabpanel" aria-labelledby="tab-client" hidden>
+    <div class="cat-head">
+      <div>
+        <h2>Client Security</h2>
+        <p>Browser-facing controls: headers, exposed files, information leakage.</p>
+      </div>
+      <span class="cat-badge"><span class="tick">✓</span> <span id="badge-client">3 PASS</span>
+      </span>
+    </div>
+    <div class="cards" id="cards-client"></div>
+  </section>
+
+</div>
+
+<script>
+/* =====================================================================
+   World Monitor — Security Assessment dashboard
+   Backend: security_scanner.py on http://127.0.0.1:8000
+   ===================================================================== */
+
+const SCANNER_API = "http://127.0.0.1:8000";
+
+/* Check definitions — mirrors CHECKS in security_scanner.py */
+const CHECKS = {
+  "sess-cookie-flags": {
+    cat: "auth", name: "Session Cookie Security",
+    purpose: "Verify that authentication/session cookies use appropriate security attributes."
+  },
+  "input-path-traversal": {
+    cat: "input", name: "Path Traversal Protection",
+    purpose: "Checks whether malicious path manipulation can access files outside the application's intended directory."
+  },
+  "input-oversized": {
+    cat: "input", name: "Oversized Payload Protection",
+    purpose: "Checks whether unusually large requests are safely rejected instead of causing server errors."
+  },
+  "input-xss-echo": {
+    cat: "input", name: "Reflected Input Protection",
+    purpose: "Checks whether malicious script-like input is returned directly in an HTTP response."
+  },
+  "api-cors-foreign-origin": {
+    cat: "api", name: "CORS Protection",
+    purpose: "Checks whether an untrusted external website can access the application's API through cross-origin requests."
+  },
+  "client-security-headers": {
+    cat: "client", name: "Security Headers",
+    purpose: "Checks whether the application sends important browser security headers."
+  },
+  "client-sourcemaps": {
+    cat: "client", name: "Production Source Maps",
+    purpose: "Checks whether JavaScript source-map files are publicly exposed."
+  },
+  "data-health-verbosity": {
+    cat: "client", name: "Health Endpoint Information Leakage",
+    purpose: "Checks whether the public health endpoint exposes secrets or sensitive internal information."
+  }
+};
+
+const CATS = [
+  { key: "auth",   tab: "tab-auth",   view: "view-auth",   cards: "cards-auth",   badge: "badge-auth"   },
+  { key: "input",  tab: "tab-input",  view: "view-input",  cards: "cards-input",  badge: "badge-input"  },
+  { key: "api",    tab: "tab-api",    view: "view-api",    cards: "cards-api",    badge: "badge-api"    },
+  { key: "client", tab: "tab-client", view: "view-client", cards: "cards-client", badge: "badge-client" }
+];
+
+const state = {
+  results: {},       // id -> result object from backend
+  running: false,
+  runningId: null,   // id of the check currently executing
+  lastScan: null,
+  target: "http://localhost:3000"
+};
+
+/* ---------------- utils ---------------- */
+
+function esc(s){ return String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+/* ---------------- tab switching ---------------- */
+
+function switchTab(key){
+  document.querySelectorAll("nav button").forEach(b => b.classList.toggle("active", b.dataset.tab === key));
+  document.querySelectorAll("section.view").forEach(v => { v.hidden = v.id !== "view-" + key; });
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+document.querySelectorAll("nav button").forEach(b => {
+  b.addEventListener("click", () => switchTab(b.dataset.tab));
+});
+
+/* ---------------- card rendering ---------------- */
+
+function renderCard(id){
+  const def = CHECKS[id];
+  const r = state.results[id];
+  const st = r ? r.status : "idle";
+  const isRunning = state.runningId === id;
+
+  const icon = {
+    idle:    `<div class="state-ico idle">·</div>`,
+    running: `<div class="state-ico running"><span class="spinner"></span></div>`,
+    pass:    `<div class="state-ico pass">✓</div>`,
+    warn:    `<div class="state-ico warn">!</div>`,
+    fail:    `<div class="state-ico fail">✕</div>`,
+    error:   `<div class="state-ico error">✕</div>`
+  }[isRunning ? "running" : st];
+
+  const badge = {
+    idle:    `<span class="badge idle">PENDING</span>`,
+    running: `<span class="badge running">CHECKING…</span>`,
+    pass:    `<span class="badge pass">PASS</span>`,
+    warn:    `<span class="badge warn">WARN</span>`,
+    fail:    `<span class="badge fail">FAIL</span>`,
+    error:   `<span class="badge error">ERROR</span>`
+  }[isRunning ? "running" : st];
+
+  const evidenceHtml = (r && Array.isArray(r.evidence) && r.evidence.length)
+    ? `<div class="evidence">
+         <div class="ev-label">Evidence</div>
+         ${r.evidence.map(e => `<span class="ev-line">${esc(e)}</span>`).join("")}
+       </div>`
+    : "";
+
+  const msgHtml = (r && r.status && r.status !== "pass" && r.detail)
+    ? `<div class="status-msg ${r.status}">${esc(r.detail)}</div>`
+    : "";
+
+  const detailRows = [];
+  if (r) {
+    if (r.detail) detailRows.push(["Summary", r.detail]);
+    if (r.http_status != null) detailRows.push(["HTTP status", String(r.http_status)]);
+    if (Array.isArray(r.headers)) r.headers.forEach(([k, v]) => detailRows.push([k, v]));
+    if (r.request) {
+      if (r.request.method) detailRows.push(["Request", `${r.request.method} ${r.request.endpoint || ""}`]);
+      if (r.request.summary) detailRows.push(["Test performed", r.request.summary]);
+    }
+    if (r.elapsed_ms != null) detailRows.push(["Duration", `${r.elapsed_ms} ms`]);
+  }
+  const hasDetails = detailRows.length > 0;
+  const detailTable = detailRows.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join("");
+
+  const detailHtml = hasDetails
+    ? `<div class="details" id="details-${id}">
+         <table>${detailTable}</table>
+       </div>`
+    : "";
+
+  const footHtml = `
+    <div class="card-foot">
+      <button class="run-one" data-run="${id}" ${state.running ? "disabled" : ""}>
+        ${isRunning ? "Running…" : "Run check"}
+      </button>
+      ${hasDetails ? `<button class="details-toggle" data-toggle="${id}">View Details <span aria-hidden="true">→</span></button>` : ""}
+    </div>`;
+
+  const cls = isRunning ? "card running" :
+              st === "pass" ? "card done-pass" :
+              st === "warn" ? "card warn-state" :
+              (st === "fail" || st === "error") ? "card fail-state" : "card";
+
+  return `
+  <article class="${cls}" data-card="${id}">
+    <div class="card-top">
+      ${icon}
+      <div class="name">${esc(def.name)}</div>
+      ${badge}
+    </div>
+    <p class="card-desc">${esc(def.purpose)}</p>
+    <div class="card-body">
+      ${evidenceHtml}
+      ${msgHtml}
+      ${detailHtml}
+      ${footHtml}
+    </div>
+  </article>`;
+}
+
+function renderCards(catKey){
+  const host = document.getElementById("cards-" + catKey);
+  if (!host) return;
+  host.innerHTML = Object.keys(CHECKS).filter(id => CHECKS[id].cat === catKey).map(renderCard).join("");
+}
+
+function renderAllCards(){
+  CATS.forEach(c => renderCards(c.key));
+}
+
+/* ---------------- overview rendering ---------------- */
+
+function renderOverview(){
+  const ids = Object.keys(CHECKS);
+  const pass = ids.filter(id => state.results[id]?.status === "pass").length;
+  const fail = ids.filter(id => ["fail","error"].includes(state.results[id]?.status)).length;
+  const warn = ids.filter(id => state.results[id]?.status === "warn").length;
+  const done = pass + fail + warn;
+
+  const numEl = document.getElementById("sum-num");
+  const capEl = document.querySelector(".summary-card .num-cap");
+  if (done === 0) {
+    numEl.textContent = ids.length;
+    numEl.style.color = "var(--faint)";
+    capEl.textContent = "Checks";
+    capEl.style.color = "var(--faint)";
+  } else {
+    numEl.textContent = pass;
+    numEl.style.color = "var(--pass)";
+    capEl.textContent = "Passed";
+    capEl.style.color = "var(--pass)";
+  }
+
+  document.getElementById("m-pass").textContent = pass;
+  document.getElementById("m-fail").textContent = fail;
+  document.getElementById("m-warn").textContent = warn;
+
+  // mini progress bars (one per check)
+  ids.forEach((id, i) => {
+    const bar = document.getElementById("bar-" + (i + 1));
+    if (!bar) return;
+    bar.classList.toggle("filled", !!state.results[id]);
+  });
+
+  // category tiles + badges + tab counts
+  CATS.forEach(c => {
+    const catIds = ids.filter(id => CHECKS[id].cat === c.key);
+    const p = catIds.filter(id => state.results[id]?.status === "pass").length;
+    const tile = document.getElementById("tile-" + c.key);
+    if (tile) tile.querySelector(".t-count").textContent = `✓ ${p} PASS`;
+    const badge = document.getElementById(c.badge);
+    if (badge) badge.textContent = `${p} PASS`;
+    const tabCount = document.getElementById("cnt-" + c.key);
+    if (tabCount) tabCount.textContent = String(catIds.length);
+  });
+
+  document.getElementById("last-scan").textContent = state.lastScan
+    ? `Last scan: ${state.lastScan} · backend security_scanner.py · port 8000`
+    : "Backend: security_scanner.py · port 8000";
+}
+
+function renderCatTiles(){
+  const grid = document.getElementById("cat-grid");
+  grid.innerHTML = CATS.map(c => `
+    <button class="cat-tile" id="tile-${c.key}" onclick="switchTab('${c.key}')">
+      <div class="t-name">${c.key === "auth" ? "Authentication" : c.key === "input" ? "Input Security" : c.key === "api" ? "API Security" : "Client Security"}</div>
+      <div class="t-count">✓ 0 PASS</div>
+    </button>`).join("");
+}
+
+/* ---------------- scanning ---------------- */
+
+function setRunStatus(msg, isErr){
+  const el = document.getElementById("run-status");
+  el.textContent = msg;
+  el.classList.toggle("err", !!isErr);
+}
+
+async function api(path, body){
+  const res = await fetch(SCANNER_API + path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
+}
+
+function applyResult(id, r){
+  state.results[id] = r;
+  const catKey = CHECKS[id].cat;
+  const host = document.getElementById("cards-" + catKey);
+  const old = host.querySelector(`[data-card="${id}"]`);
+  if (old) old.outerHTML = renderCard(id);
+  renderOverview();
+}
+
+function rerenderCard(id){
+  const catKey = CHECKS[id].cat;
+  const host = document.getElementById("cards-" + catKey);
+  const old = host.querySelector(`[data-card=${JSON.stringify(id)}]`);
+  if (old) old.outerHTML = renderCard(id);
+}
+
+async function runCheck(id){
+  state.runningId = id;
+  rerenderCard(id);
+  try {
+    const r = await api("/run", { id, target: state.target });
+    state.runningId = null;
+    applyResult(id, r);
+    return r.status;
+  } catch (e) {
+    state.runningId = null;
+    applyResult(id, { status: "error", detail: String(e.message || e), evidence: [], headers: [] });
+    return "error";
+  }
+}
+
+async function runAll(){
+  if (state.running) return;
+  state.running = true;
+  document.getElementById("run-all-btn").disabled = true;
+  document.getElementById("progress").classList.add("on");
+  setRunStatus("Running checks…");
+
+  const ids = Object.keys(CHECKS);
+  let done = 0;
+  // Sequential so the demo shows checks completing one by one
+  for (const id of ids) {
+    await runCheck(id);
+    done++;
+    document.getElementById("progress-fill").style.width = Math.round(done / ids.length * 100) + "%";
+  }
+
+  state.running = false;
+  state.runningId = null;
+  state.lastScan = new Date().toLocaleString();
+  document.getElementById("run-all-btn").disabled = false;
+  const pass = ids.filter(id => state.results[id]?.status === "pass").length;
+  const issues = ids.length - pass;
+  setRunStatus(issues === 0
+    ? `Completed — ${pass}/${ids.length} checks passed`
+    : `Completed — ${pass}/${ids.length} passed, ${issues} need attention`);
+  // Re-render all cards to clear any stale running states
+  renderAllCards();
+}
+
+/* ---------------- full report download ---------------- */
+
+// The backend runs every check fresh and returns the report as a download.
+function downloadReport(){
+  const url = `${SCANNER_API}/report?target=${encodeURIComponent(state.target)}`;
+  window.open(url, "_blank");
+}
+
+/* ---------------- event delegation ---------------- */
+
+document.addEventListener("click", (e) => {
+  const runBtn = e.target.closest("[data-run]");
+  if (runBtn) {
+    if (state.running) return;
+    runCheck(runBtn.dataset.run);
+    return;
+  }
+  const tgl = e.target.closest("[data-toggle]");
+  if (tgl) {
+    document.getElementById("details-" + tgl.dataset.toggle)?.classList.toggle("open");
+  }
+});
+
+/* ---------------- boot ---------------- */
+
+function boot(){
+  renderCatTiles();
+  renderAllCards();
+  renderOverview();
+  // Demo helper: /?autorun=1 starts the full suite automatically on load.
+  if (new URLSearchParams(location.search).has("autorun")) runAll();
+}
+
+boot();
+</script>
+</body>
+</html>
